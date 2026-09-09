@@ -42,3 +42,16 @@ class FindingState(StrEnum):
     FALSE_POSITIVE = "false_positive"
     ACCEPTED_RISK = "accepted_risk"
     FIXED = "fixed"
+
+
+class StepStatus(StrEnum):
+    OK = "ok"
+    DEGRADED = "degraded"
+    FAILED = "failed"
+
+
+class GuardHold(StrEnum):
+    INJECTION = "injection"
+    REDACTION = "redaction"
+    POLICY = "policy"
+    EVIDENCE = "evidence"
