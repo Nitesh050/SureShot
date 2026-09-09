@@ -1,0 +1,14 @@
+[project]
+name = "sureshot"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["sureshot-domain"]
+
+[tool.uv.workspace]
+members = ["packages/*", "services/*"]
+
+[tool.uv.sources]
+sureshot-domain = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8"]
