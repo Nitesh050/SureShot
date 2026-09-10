@@ -55,3 +55,9 @@ class GuardHold(StrEnum):
     REDACTION = "redaction"
     POLICY = "policy"
     EVIDENCE = "evidence"
+
+
+class Coverage(StrEnum):
+    FULL = "full"
+    PARTIAL = "partial"
+    NONE = "none"
