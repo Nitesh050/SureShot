@@ -130,8 +130,14 @@ def extract_tar(
     root.mkdir(parents=True, exist_ok=True)
     report = ExtractionReport()
 
+    member_count = 0
     with tarfile.open(fileobj=source, mode="r:*") as tf:
         for info in tf:
+            member_count += 1
+            if member_count > limits.max_files:
+                raise UnsafeArchiveError(
+                    f"archive exceeds file count limit of {limits.max_files}"
+                )
             if info.issym() or info.islnk():
                 raise UnsafeArchiveError(f"symlink members are rejected: {info.name}")
             if info.type not in _ALLOWED_TAR_TYPES:
@@ -145,10 +151,6 @@ def extract_tar(
                 target.mkdir(parents=True, exist_ok=True)
                 continue
 
-            if report.files >= limits.max_files:
-                raise UnsafeArchiveError(
-                    f"archive exceeds file count limit of {limits.max_files}"
-                )
             if info.size > limits.max_file_bytes:
                 raise UnsafeArchiveError(
                     f"member exceeds per-file limit of {limits.max_file_bytes} bytes: "
