@@ -30,6 +30,7 @@ class ScanOutcome(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     findings: tuple[SecurityFinding, ...]
+    raw_results: tuple[dict, ...] = ()
     tool: ToolRecord
     duration_ms: int = Field(ge=0)
     partial_reason: str | None = None
