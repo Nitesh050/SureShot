@@ -48,4 +48,4 @@ def test_real_scan_finds_sql_injection(tmp_path: Path):
         ScanRequest(source=source.resolve(), output=output.resolve(), timeout_seconds=300)
     )
     assert outcome.tool.ruleset_hash is not None
-    assert len(outcome.raw_results) > 0
+    assert len(outcome.findings) > 0

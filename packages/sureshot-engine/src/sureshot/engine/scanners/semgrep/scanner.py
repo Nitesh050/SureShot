@@ -70,7 +70,6 @@ class SemgrepScanner:
             tool = self._ruleset_record("unknown", rulesets)
             return ScanOutcome(
                 findings=(),
-                raw_results=(),
                 tool=tool,
                 duration_ms=0,
                 partial_reason=f"semgrep timed out: {exc}",
@@ -103,7 +102,6 @@ class SemgrepScanner:
         except SandboxTimeout as exc:
             return ScanOutcome(
                 findings=(),
-                raw_results=(),
                 tool=tool,
                 duration_ms=request.timeout_seconds * 1000,
                 partial_reason=f"semgrep timed out: {exc}",
@@ -114,7 +112,6 @@ class SemgrepScanner:
         if result.truncated:
             return ScanOutcome(
                 findings=(),
-                raw_results=(),
                 tool=tool,
                 duration_ms=result.duration_ms,
                 partial_reason="semgrep output was truncated; results discarded",
@@ -139,9 +136,12 @@ class SemgrepScanner:
                 f"{errors[0].get('message', 'unknown error')[:200]}"
             )
 
+        from sureshot.engine.scanners.semgrep.adapter import adapt_results
+
         return ScanOutcome(
-            findings=(),
-            raw_results=tuple(payload.get("results") or []),
+            findings=adapt_results(
+                payload.get("results") or [], request.source, tool
+            ),
             tool=tool,
             duration_ms=result.duration_ms,
             partial_reason=partial,
