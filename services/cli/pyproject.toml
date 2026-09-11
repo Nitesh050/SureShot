@@ -1,0 +1,19 @@
+[project]
+name = "sureshot-cli"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["sureshot-domain", "sureshot-engine", "typer>=0.12", "rich>=13"]
+
+[project.scripts]
+sureshot = "sureshot.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sureshot"]
+
+[tool.uv.sources]
+sureshot-domain = { workspace = true }
+sureshot-engine = { workspace = true }

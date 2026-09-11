@@ -6,6 +6,7 @@ from typing import Mapping
 
 from sureshot.domain.enums import Domain
 from sureshot.domain.finding import SecurityFinding
+from sureshot.engine.context.snippet import Snippet, SnippetKey, snippet_key
 
 _ID_LENGTH = 32
 
@@ -102,17 +103,15 @@ def compute_issue_id(finding: SecurityFinding) -> str:
 
 def apply_fingerprints(
     findings: tuple[SecurityFinding, ...],
-    snippets: Mapping[str, str],
+    snippets: Mapping[SnippetKey, Snippet],
 ) -> tuple[SecurityFinding, ...]:
-    """Stamp instance_id and issue_id onto a batch of findings, preserving order."""
-    return tuple(
-        finding.model_copy(
-            update={
-                "instance_id": compute_instance_id(
-                    finding, snippets.get(finding.location.file_path)
-                ),
-                "issue_id": compute_issue_id(finding),
-            }
-        )
-        for finding in findings
-    )
+    out = []
+    for finding in findings:
+        snippet = snippets.get(snippet_key(finding.location))
+        out.append(finding.model_copy(update={
+            "instance_id": compute_instance_id(
+                finding, snippet.matched if snippet and snippet.matched else None
+            ),
+            "issue_id": compute_issue_id(finding),
+        }))
+    return tuple(out)

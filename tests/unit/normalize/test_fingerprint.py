@@ -2,6 +2,7 @@ import pytest
 
 from sureshot.domain.enums import Domain, Severity
 from sureshot.domain.finding import Location, Package, SecretRef, SecurityFinding
+from sureshot.engine.context.snippet import Snippet, snippet_key
 from sureshot.engine.normalize.fingerprint import (
     apply_fingerprints,
     normalize_snippet,
@@ -25,8 +26,12 @@ def _finding(**overrides) -> SecurityFinding:
     return SecurityFinding(**(base | overrides))
 
 
-def _fp(finding: SecurityFinding, snippet: str = SNIPPET) -> SecurityFinding:
-    return apply_fingerprints((finding,), {finding.location.file_path: snippet})[0]
+def _fp(finding, snippet: str = SNIPPET):
+    return apply_fingerprints(
+        (finding,),
+        {snippet_key(finding.location): Snippet(matched=snippet, context=snippet,
+                                                context_start=finding.location.line_start)},
+    )[0]
 
 
 def test_ids_are_populated():
@@ -107,8 +112,7 @@ def test_hash_is_deterministic_across_calls():
 
 
 def test_missing_snippet_falls_back_without_crashing():
-    finding = apply_fingerprints((_finding(),), {})[0]
-    assert finding.instance_id is not None
+    assert apply_fingerprints((_finding(),), {})[0].instance_id is not None
 
 
 def test_missing_snippet_fallback_is_line_anchored():
