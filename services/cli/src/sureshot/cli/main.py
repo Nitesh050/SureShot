@@ -28,6 +28,13 @@ _COLOR = {"critical": "bold red", "high": "red", "medium": "yellow",
           "low": "cyan", "info": "dim"}
 
 
+# A no-op callback keeps `scan` an explicit subcommand; Typer collapses a
+# single @app.command() into the app itself otherwise (no "scan" keyword).
+@app.callback()
+def _main() -> None:
+    pass
+
+
 def _stage(source: Path, dest: Path) -> None:
     if source.is_dir():
         shutil.copytree(source, dest, dirs_exist_ok=True, symlinks=False,
