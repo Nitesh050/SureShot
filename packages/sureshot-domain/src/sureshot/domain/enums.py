@@ -55,6 +55,7 @@ class GuardHold(StrEnum):
     REDACTION = "redaction"
     POLICY = "policy"
     EVIDENCE = "evidence"
+    BUDGET = "budget"
 
 
 class Coverage(StrEnum):

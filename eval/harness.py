@@ -82,7 +82,7 @@ def run(
                 )
                 continue
             truth[finding.instance_id] = label.vulnerable
-            predictions[finding.instance_id] = triage(finding)
+            predictions[finding.instance_id] = triage(finding, case_dir)
 
     confusion = score(predictions, truth)
     detail = {
@@ -93,9 +93,18 @@ def run(
     return confusion, detail
 
 
-def keep_everything(_finding: SecurityFinding) -> Verdict:
+def keep_everything(_finding: SecurityFinding, _case_dir: Path) -> Verdict:
     """Baseline: dismiss nothing. Perfect recall, zero noise reduction."""
     return Verdict.TRUE_POSITIVE
+
+
+def llm_triage(engine):
+    from sureshot.engine.context.snippet import extract_snippet
+
+    def _triage(finding: SecurityFinding, case_dir: Path) -> Verdict:
+        snippet = extract_snippet(case_dir, finding.location)
+        return engine.triage(finding, snippet).verdict
+    return _triage
 
 
 def save_run(name: str, confusion: Confusion, detail: dict) -> Path:
