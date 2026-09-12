@@ -2,7 +2,7 @@
 name = "sureshot-engine"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["sureshot-domain", "pydantic>=2.7", "anthropic>=0.40"]
 
 [build-system]
 requires = ["hatchling"]
@@ -10,3 +10,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sureshot"]
+
+[tool.uv.sources]
+sureshot-domain = { workspace = true }
