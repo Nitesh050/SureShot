@@ -1,0 +1,24 @@
+{
+  "name": "baseline",
+  "at": "20260912T093402",
+  "metrics": {
+    "recall": 0.0,
+    "precision": 0.0,
+    "f1": 0.0,
+    "mcc": 0.0,
+    "hold_rate": 0.0,
+    "noise_reduction": 0.0
+  },
+  "confusion": {
+    "tp": 0,
+    "fp": 0,
+    "tn": 0,
+    "fn": 0,
+    "held": 0
+  },
+  "detail": {
+    "scored": 0,
+    "unmatched_findings": [],
+    "labels_never_fired": []
+  }
+}
