@@ -1,0 +1,25 @@
+version: 1
+
+severity_base:
+  critical: 90
+  high: 70
+  medium: 45
+  low: 20
+  info: 5
+
+verdict_multiplier:
+  true_positive: 1.0
+  needs_human: 0.75
+  false_positive: 0.30
+
+path_multiplier:
+  production: 1.0
+  tooling: 0.80
+  example: 0.45
+  test: 0.35
+
+sca_fix_bonus: 6
+sca_direct_bonus: 4
+
+confidence_pull: 0.4
+critical_floor: 60
