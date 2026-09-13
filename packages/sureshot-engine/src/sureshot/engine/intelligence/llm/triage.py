@@ -10,6 +10,7 @@ from sureshot.domain.analysis import Evidence, SecurityAnalysis
 from sureshot.domain.enums import GuardHold, Verdict
 from sureshot.domain.finding import Location, SecurityFinding
 from sureshot.engine.context.snippet import Snippet
+from sureshot.engine.guards.injection import scan_for_directives
 from sureshot.engine.intelligence.llm.budget import BudgetExceeded, TokenBudget
 from sureshot.engine.intelligence.llm.cache import TriageCache
 from sureshot.engine.intelligence.llm.client import LLMClient, LLMError
@@ -38,6 +39,16 @@ class TriageEngine:
     def triage(self, finding: SecurityFinding, snippet: Snippet) -> SecurityAnalysis:
         if not snippet.matched:
             return self._held(finding, GuardHold.EVIDENCE, "no source available")
+
+        signals = scan_for_directives(
+            snippet.context or snippet.matched, snippet.context_start
+        )
+        if signals:
+            return self._held(
+                finding,
+                GuardHold.INJECTION,
+                f"line {signals[0].line}: {signals[0].reason} — {signals[0].excerpt!r}",
+            )
 
         key = (
             TriageCache.key(finding.instance_id, self._prompt.hash, self._client.model_id)
