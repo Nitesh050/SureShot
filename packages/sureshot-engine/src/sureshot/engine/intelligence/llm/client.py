@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
 import random
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 _RETRYABLE = (429, 500, 502, 503, 529)
 
 
@@ -77,3 +81,53 @@ class AnthropicClient:
             time.sleep(min(2**attempt + random.random(), 30))
 
         raise LLMError(f"model unreachable after {self._max_attempts} attempts: {last}")
+
+
+class OllamaClient:
+    """Thin wrapper over a local Ollama server. Deterministic, retrying, no streaming."""
+
+    def __init__(
+        self,
+        model_id: str = DEFAULT_OLLAMA_MODEL,
+        base_url: str = "http://localhost:11434",
+        max_attempts: int = 4,
+        timeout: float = 120.0,
+    ) -> None:
+        self.model_id = model_id
+        self._base_url = base_url.rstrip("/")
+        self._max_attempts = max_attempts
+        self._timeout = timeout
+
+    def complete(self, prompt: str, max_tokens: int = 1024) -> ModelReply:
+        payload = json.dumps({
+            "model": self.model_id,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0, "num_predict": max_tokens},
+        }).encode("utf-8")
+
+        last: Exception | None = None
+        for attempt in range(self._max_attempts):
+            request = urllib.request.Request(
+                f"{self._base_url}/api/generate",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self._timeout) as resp:
+                    body = json.loads(resp.read())
+                return ModelReply(
+                    text=body.get("response", ""),
+                    input_tokens=body.get("prompt_eval_count", 0),
+                    output_tokens=body.get("eval_count", 0),
+                )
+            except urllib.error.HTTPError as exc:
+                last = exc
+                if exc.code not in _RETRYABLE:
+                    raise LLMError(f"ollama refused request: {exc}") from exc
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+                last = exc
+
+            time.sleep(min(2**attempt + random.random(), 30))
+
+        raise LLMError(f"ollama unreachable after {self._max_attempts} attempts: {last}")
