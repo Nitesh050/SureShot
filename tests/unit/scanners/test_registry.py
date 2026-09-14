@@ -37,9 +37,18 @@ def test_default_scanners_always_includes_semgrep():
     assert "semgrep" in names
 
 
-def test_trivy_and_codeql_skipped_with_no_signal():
+def test_codeql_skipped_with_no_language_signal():
     names = {s.name for s in default_scanners(_profile())}
-    assert names == {"semgrep"}
+    assert names == {"semgrep", "trivy"}
+
+
+def test_trivy_runs_regardless_of_ecosystems():
+    """Trivy also does secret scanning, which needs no dependency manifest —
+    it must not be gated on profile.ecosystems."""
+    profile = _profile()
+    assert profile.ecosystems == ()
+    names = {s.name for s in default_scanners(profile)}
+    assert "trivy" in names
 
 
 def test_trivy_included_when_ecosystem_present():

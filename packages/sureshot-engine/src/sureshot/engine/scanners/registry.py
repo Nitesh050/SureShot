@@ -37,16 +37,15 @@ def build_scanner(name: str, **kwargs: object) -> Scanner:
 def default_scanners(profile: RepositoryProfile | None = None) -> tuple[Scanner, ...]:
     """Select the scanners applicable to a profiled repository.
 
-    Semgrep always runs — it degrades to a base ruleset with no profile.
-    Trivy only runs when the profile shows at least one dependency ecosystem,
-    since scanning a repo with no manifests can't find any SCA findings.
-    CodeQL only runs when the profile's primary language has an extractor —
-    building a database is expensive, and there's nothing to build one from
-    otherwise.
+    Semgrep and Trivy always run. Trivy is not just an SCA tool — it also
+    does secret scanning, which needs no dependency manifest at all, so it
+    can't be gated on profile.ecosystems the way SCA-only logic would
+    suggest (a repo with just a stray .env and no requirements.txt still
+    needs it). CodeQL only runs when the profile's primary language has an
+    extractor — building a database is expensive, and there's nothing to
+    build one from otherwise.
     """
-    scanners: list[Scanner] = [SemgrepScanner(profile=profile)]
-    if profile is None or profile.ecosystems:
-        scanners.append(TrivyScanner())
+    scanners: list[Scanner] = [SemgrepScanner(profile=profile), TrivyScanner()]
     if profile is None or profile.primary_language in CODEQL_LANGUAGES:
         scanners.append(CodeQLScanner(profile=profile))
     return tuple(scanners)

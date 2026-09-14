@@ -2,7 +2,7 @@
 name = "sureshot-reporting"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["sureshot-domain", "sureshot-engine", "jinja2>=3.1", "reportlab>=4.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -10,3 +10,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sureshot"]
+
+[tool.uv.sources]
+sureshot-domain = { workspace = true }
+sureshot-engine = { workspace = true }
