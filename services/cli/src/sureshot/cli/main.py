@@ -4,18 +4,23 @@ import json
 import shutil
 import tempfile
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from sureshot.domain.enums import StepStatus
+from sureshot.domain.enums import Coverage, StepStatus
+from sureshot.domain.scan import ScanProvenance, ScanState
 from sureshot.engine.ingest.profiler import EXCLUDED_DIRS
 from sureshot.engine.ingest.unpack import unpack
 from sureshot.engine.ingest.workdir import Workdir
+from sureshot.engine.intelligence.llm.cache import TriageCache
 from sureshot.engine.intelligence.llm.client import AnthropicClient, LLMError, OllamaClient
-from sureshot.engine.pipeline.run import PipelineConfig, run_pipeline
+from sureshot.engine.intelligence.llm.triage import TriageEngine
+from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
+from sureshot.engine.scanners.semgrep.scanner import SemgrepScanner
 
 app = typer.Typer(add_completion=False)
 console = Console()
@@ -49,77 +54,86 @@ def _build_client(backend: str, model: str | None):
 def scan(
     target: Path = typer.Argument(..., exists=True),
     json_out: Path | None = typer.Option(None, "--json"),
-    timeout: int = typer.Option(900, "--timeout"),
-    no_triage: bool = typer.Option(False, "--no-triage"),
-    max_triage: int | None = typer.Option(None, "--max-triage"),
+    triage: bool = typer.Option(True, "--triage/--no-triage"),
+    min_score: float = typer.Option(0.0, "--min-score"),
     llm: str = typer.Option("anthropic", "--llm", help="anthropic or ollama"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
+    timeout: int = typer.Option(900, "--timeout"),
     keep: bool = typer.Option(False, "--keep"),
 ) -> None:
-    client = None
-    if not no_triage:
+    scan_id = uuid.uuid4().hex[:12]
+
+    engine = None
+    if triage:
         try:
-            client = _build_client(llm, llm_model)
+            engine = TriageEngine(client=_build_client(llm, llm_model), cache=TriageCache())
         except LLMError as exc:
             console.print(f"[yellow]triage disabled:[/yellow] {exc}")
 
-    scan_id = uuid.uuid4().hex[:12]
     with Workdir(scan_id=scan_id, base=Path(tempfile.gettempdir()), keep=keep) as wd:
         with console.status("staging"):
             _stage(target.resolve(), wd.source)
+
+        state = ScanState(
+            scan_id=scan_id, org_id="local", project_id=target.name,
+            workdir=str(wd.root), started_at=datetime.now(UTC),
+            provenance=ScanProvenance(engine_version="0.1.0"),
+        )
+        ctx = PipelineContext(
+            source=wd.source.resolve(), output=wd.output.resolve(),
+            scanners=(SemgrepScanner(),), triage=engine, timeout_seconds=timeout,
+        )
+
         with console.status("scanning"):
-            result = run_pipeline(
-                wd.source,
-                PipelineConfig(client=client, timeout_seconds=timeout, max_triage=max_triage),
-            )
+            result = run_pipeline(state, ctx)
+
+        shown = tuple(t for t in result.triaged if t.score >= min_score)
+
         if json_out:
             json_out.write_text(json.dumps({
-                "scan_id": result.state.scan_id,
+                "scan_id": scan_id,
                 "provenance": result.state.provenance.model_dump(mode="json"),
                 "coverage": [c.model_dump(mode="json") for c in result.profile.coverage],
-                "findings": [{
-                    "finding": s.finding.model_dump(mode="json"),
-                    "analysis": s.analysis.model_dump(mode="json") if s.analysis else None,
-                    "risk": s.risk.model_dump(mode="json"),
-                } for s in result.findings],
+                "findings": [t.model_dump(mode="json") for t in shown],
             }, indent=2))
 
-    _render(result)
-    raise typer.Exit(1 if result.findings else 0)
+    _render(shown, result.profile, result.state)
+    raise typer.Exit(1 if any(t.actionable for t in shown) else 0)
 
 
-def _render(result) -> None:
-    if not result.findings:
+def _render(triaged, profile, state) -> None:
+    console.print(
+        f"[dim]{profile.scanned_files} files · "
+        f"{profile.primary_language or 'unknown'}[/dim]\n"
+    )
+
+    if not triaged:
         console.print("[green]no findings[/green]")
     else:
         table = Table(show_header=True, header_style="dim")
-        table.add_column("risk", justify="right")
-        table.add_column("sev")
-        table.add_column("verdict")
-        table.add_column("rule")
-        table.add_column("location")
-        for s in result.findings[:40]:
-            verdict = s.analysis.verdict.value if s.analysis else "—"
-            held = s.analysis and s.analysis.guard_holds
+        for col in ("score", "sev", "verdict", "rule", "location"):
+            table.add_column(col)
+        for t in triaged[:40]:
+            f = t.finding
+            mark = "!" if t.holds else ""
             table.add_row(
-                f"{s.risk.score:.0f}",
-                f"[{_COLOR[s.finding.severity.value]}]{s.finding.severity.value}[/]",
-                f"[yellow]{verdict}[/]" if held else verdict,
-                s.finding.title,
-                f"{s.finding.location.file_path}:{s.finding.location.line_start}",
+                f"{t.score:.0f}{mark}",
+                f"[{_COLOR[f.severity.value]}]{f.severity.value}[/]",
+                t.verdict.value.replace("_", " "),
+                f.title,
+                f"{f.location.file_path}:{f.location.line_start}",
             )
         console.print(table)
 
-    for s in result.findings:
-        for hold in (s.analysis.guard_holds if s.analysis else ()):
-            console.print(
-                f"[yellow]held[/yellow] {s.finding.location.file_path}"
-                f":{s.finding.location.line_start} — {hold.value}: {s.analysis.rationale}"
-            )
+        dismissed = sum(1 for t in triaged if not t.actionable)
+        console.print(
+            f"\n{len(triaged)} findings · {len(triaged) - dismissed} actionable · "
+            f"{dismissed} dismissed"
+        )
 
-    for note in result.profile.coverage:
-        if note.coverage.value != "full":
+    for note in profile.coverage:
+        if note.coverage is not Coverage.FULL:
             console.print(f"[yellow]coverage[/yellow] {note.domain.value}: {note.reason}")
-    for step in result.state.steps:
+    for step in state.steps:
         if step.status is not StepStatus.OK:
-            console.print(f"[yellow]{step.status.value}[/yellow] {step.step}: {step.detail}")
+            console.print(f"[yellow]degraded[/yellow] {step.step}: {step.detail}")
