@@ -21,7 +21,7 @@ from sureshot.engine.intelligence.llm.cache import TriageCache
 from sureshot.engine.intelligence.llm.client import AnthropicClient, LLMError, OllamaClient
 from sureshot.engine.intelligence.llm.triage import TriageEngine
 from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
-from sureshot.engine.scanners.registry import default_scanners
+from sureshot.engine.scanners.registry import build_scanner, default_scanners
 from sureshot.reporting.builder import build_report
 from sureshot.reporting.writers import sarif as sarif_writer
 
@@ -53,6 +53,18 @@ def _build_client(backend: str, model: str | None):
     return AnthropicClient(model_id=model) if model else AnthropicClient()
 
 
+def _select_scanners(names: str | None, profile):
+    if not names:
+        return default_scanners(profile)
+    selected = []
+    for name in (n.strip() for n in names.split(",") if n.strip()):
+        if name in ("semgrep", "codeql"):
+            selected.append(build_scanner(name, profile=profile))
+        else:
+            selected.append(build_scanner(name))
+    return tuple(selected)
+
+
 @app.command()
 def scan(
     target: Path = typer.Argument(..., exists=True),
@@ -62,6 +74,9 @@ def scan(
     min_score: float = typer.Option(0.0, "--min-score"),
     llm: str = typer.Option("anthropic", "--llm", help="anthropic or ollama"),
     llm_model: str | None = typer.Option(None, "--llm-model"),
+    scanners: str | None = typer.Option(
+        None, "--scanners", help="comma-separated scanner names (default: auto-detected)"
+    ),
     timeout: int = typer.Option(900, "--timeout"),
     keep: bool = typer.Option(False, "--keep"),
 ) -> None:
@@ -87,7 +102,7 @@ def scan(
         )
         ctx = PipelineContext(
             source=wd.source.resolve(), output=wd.output.resolve(),
-            scanners=default_scanners(profile), triage=engine, timeout_seconds=timeout,
+            scanners=_select_scanners(scanners, profile), triage=engine, timeout_seconds=timeout,
         )
 
         with console.status("scanning"):
