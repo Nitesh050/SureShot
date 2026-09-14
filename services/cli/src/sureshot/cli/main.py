@@ -21,6 +21,7 @@ from sureshot.engine.intelligence.llm.client import AnthropicClient, LLMError, O
 from sureshot.engine.intelligence.llm.triage import TriageEngine
 from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
 from sureshot.engine.scanners.semgrep.scanner import SemgrepScanner
+from sureshot.engine.scanners.trivy.scanner import TrivyScanner
 
 app = typer.Typer(add_completion=False)
 console = Console()
@@ -81,7 +82,7 @@ def scan(
         )
         ctx = PipelineContext(
             source=wd.source.resolve(), output=wd.output.resolve(),
-            scanners=(SemgrepScanner(),), triage=engine, timeout_seconds=timeout,
+            scanners=(SemgrepScanner(), TrivyScanner()), triage=engine, timeout_seconds=timeout,
         )
 
         with console.status("scanning"):
