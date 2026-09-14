@@ -100,3 +100,19 @@ def test_memory_limit_kills_runaway_allocation(tmp_path: Path):
         _py("x = bytearray(512 * 1024 * 1024)"), cwd=tmp_path, limits=limits
     )
     assert result.exit_code != 0
+
+
+@pytest.mark.skipif(
+    sys.platform in ("win32", "darwin"),
+    reason="RLIMIT_AS is POSIX-only and unenforced on macOS/Darwin",
+)
+def test_none_memory_limit_allows_allocation_a_tight_limit_would_kill(tmp_path: Path):
+    """max_memory_bytes=None skips RLIMIT_AS entirely — for runtimes (like
+    semgrep-core's OCaml) whose virtual-address-space footprint is unrelated
+    to actual memory used, a tight RLIMIT_AS kills them regardless of
+    workload; None is how a caller opts out of that check for such a tool."""
+    limits = ProcessLimits(max_memory_bytes=None, timeout_seconds=20)
+    result = run_sandboxed(
+        _py("x = bytearray(512 * 1024 * 1024)"), cwd=tmp_path, limits=limits
+    )
+    assert result.exit_code == 0

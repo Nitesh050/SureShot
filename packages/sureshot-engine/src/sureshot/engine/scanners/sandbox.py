@@ -26,7 +26,13 @@ class SandboxTimeout(SandboxError):
 @dataclass(frozen=True)
 class ProcessLimits:
     timeout_seconds: int = 900
-    max_memory_bytes: int = 4 << 30
+    # None skips the OS-level RLIMIT_AS check entirely. That's deliberate,
+    # not just "no limit": RLIMIT_AS caps virtual address space, and some
+    # runtimes (OCaml's GC, semgrep-core's included) reserve a large VA
+    # range as a fixed cost of starting up, unrelated to actual memory used.
+    # A tool with that behavior needs its own RSS-aware self-limiting
+    # (semgrep's own --max-memory) instead — see SemgrepScanner.
+    max_memory_bytes: int | None = 4 << 30
     max_output_bytes: int = 256 << 20
     max_open_files: int = 4096
 
@@ -52,7 +58,10 @@ def _preexec(limits: ProcessLimits):
     def apply() -> None:
         os.setsid()
         # RLIMIT_AS is not enforced on macOS/Darwin; setting it raises.
-        _try_setrlimit(resource.RLIMIT_AS, limits.max_memory_bytes)
+        # It's also skipped outright when max_memory_bytes is None — see
+        # ProcessLimits.
+        if limits.max_memory_bytes is not None:
+            _try_setrlimit(resource.RLIMIT_AS, limits.max_memory_bytes)
         _try_setrlimit(resource.RLIMIT_NOFILE, limits.max_open_files)
         _try_setrlimit(resource.RLIMIT_CORE, 0)
 

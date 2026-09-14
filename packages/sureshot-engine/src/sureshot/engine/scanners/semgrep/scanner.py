@@ -23,6 +23,28 @@ OFFLINE_ENV = {
     "SEMGREP_ENABLE_VERSION_CHECK": "0",
 }
 
+# semgrep-core (OCaml) reserves a large virtual-address-space range as a
+# fixed cost of starting up, well beyond what RLIMIT_AS can distinguish from
+# a genuine runaway process — confirmed live: even an 8GB RLIMIT_AS killed a
+# 3-ruleset scan that peaks nowhere near that in actual RSS. So the OS-level
+# memory limit is disabled for this call (ProcessLimits.max_memory_bytes=None)
+# and semgrep's own RSS-aware --max-memory is used instead.
+MAX_MEMORY_MB = 4000
+
+
+def _error_detail(result) -> str:
+    """Prefer semgrep's own JSON error payload over stderr — a fatal exit
+    (e.g. the engine killed for memory) reports its real diagnostic on
+    stdout as {"errors": [...]}, leaving stderr empty."""
+    try:
+        payload = json.loads(result.stdout)
+        errors = payload.get("errors") or []
+        if errors:
+            return str(errors[0].get("message", "")).strip()[:400]
+    except json.JSONDecodeError:
+        pass
+    return result.stderr.strip()[:400]
+
 
 class SemgrepScanner:
     name = "semgrep"
@@ -89,6 +111,7 @@ class SemgrepScanner:
             "--no-git-ignore",
             f"--timeout={max(request.timeout_seconds // 10, 30)}",
             "--max-target-bytes=1000000",
+            f"--max-memory={MAX_MEMORY_MB}",
             str(request.source),
         ]
 
@@ -97,7 +120,9 @@ class SemgrepScanner:
                 argv,
                 cwd=request.source,
                 env=OFFLINE_ENV,
-                limits=ProcessLimits(timeout_seconds=request.timeout_seconds),
+                limits=ProcessLimits(
+                    timeout_seconds=request.timeout_seconds, max_memory_bytes=None
+                ),
             )
         except SandboxTimeout as exc:
             return ScanOutcome(
@@ -119,8 +144,7 @@ class SemgrepScanner:
 
         if result.exit_code not in (EXIT_CLEAN, EXIT_FINDINGS):
             raise ScannerUnavailable(
-                f"semgrep exited fatally ({result.exit_code}): "
-                f"{result.stderr.strip()[:400]}"
+                f"semgrep exited fatally ({result.exit_code}): {_error_detail(result)}"
             )
 
         try:
