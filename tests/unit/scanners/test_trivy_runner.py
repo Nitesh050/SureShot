@@ -125,3 +125,62 @@ def test_cache_dir_is_passed_through(tmp_path: Path, monkeypatch):
 def test_missing_binary_raises_scanner_unavailable(tmp_path: Path):
     with pytest.raises(ScannerUnavailable, match="unavailable"):
         TrivyScanner(binary="trivy-does-not-exist").version()
+
+
+def test_version_timeout_is_degraded_not_fatal(tmp_path: Path, monkeypatch):
+    def _fake(argv, **kwargs):
+        raise SandboxTimeout("trivy exceeded 30s")
+
+    monkeypatch.setattr("sureshot.engine.scanners.trivy.scanner.run_sandboxed", _fake)
+    outcome = TrivyScanner().scan(_request(tmp_path))
+    assert outcome.degraded is True
+    assert outcome.findings == ()
+    assert outcome.tool.name == "trivy"
+
+
+def test_db_timestamp_populated_from_cache(tmp_path: Path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    (cache_dir / "db").mkdir(parents=True)
+    (cache_dir / "db" / "metadata.json").write_text(json.dumps({
+        "UpdatedAt": "2026-01-01T00:00:00Z",
+        "NextUpdate": "2099-01-01T00:00:00Z",
+    }))
+
+    def _fake(argv, **kwargs):
+        if "--version" in argv:
+            return _version_reply()
+        return ProcessResult(exit_code=0, stdout='{"Results": []}', stderr="", duration_ms=5)
+
+    monkeypatch.setattr("sureshot.engine.scanners.trivy.scanner.run_sandboxed", _fake)
+    tool = TrivyScanner(cache_dir=cache_dir).version()
+    assert tool.db_timestamp is not None
+    assert tool.db_timestamp.year == 2026
+
+
+def test_db_timestamp_none_when_cache_absent(tmp_path: Path, monkeypatch):
+    def _fake(argv, **kwargs):
+        return _version_reply()
+
+    monkeypatch.setattr("sureshot.engine.scanners.trivy.scanner.run_sandboxed", _fake)
+    tool = TrivyScanner(cache_dir=tmp_path / "no-such-cache").version()
+    assert tool.db_timestamp is None
+
+
+def test_explicit_timeout_flag_matches_request(tmp_path: Path, monkeypatch):
+    captured = {}
+
+    def _fake(argv, **kwargs):
+        if "--version" in argv:
+            return _version_reply()
+        captured["argv"] = argv
+        return ProcessResult(exit_code=0, stdout='{"Results": []}', stderr="", duration_ms=5)
+
+    monkeypatch.setattr("sureshot.engine.scanners.trivy.scanner.run_sandboxed", _fake)
+    request = ScanRequest(
+        source=(tmp_path / "source"), output=(tmp_path / "output"), timeout_seconds=120
+    )
+    (tmp_path / "source").mkdir(exist_ok=True)
+    (tmp_path / "output").mkdir(exist_ok=True)
+    TrivyScanner().scan(request)
+    argv = captured["argv"]
+    assert argv[argv.index("--timeout") + 1] == "120s"

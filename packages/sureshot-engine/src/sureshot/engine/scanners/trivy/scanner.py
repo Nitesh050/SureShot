@@ -14,6 +14,7 @@ from sureshot.engine.scanners.sandbox import (
     run_sandboxed,
 )
 from sureshot.engine.scanners.trivy.adapter import adapt_results
+from sureshot.engine.scanners.trivy.dbcache import check_db
 
 EXIT_CLEAN = 0
 
@@ -31,30 +32,55 @@ class TrivyScanner:
     def _cache_args(self) -> list[str]:
         return ["--cache-dir", str(self._cache_dir)] if self._cache_dir else []
 
+    def _check_version(self):
+        return run_sandboxed(
+            [self._binary, "--version", "--format", "json"],
+            cwd=Path.cwd(),
+            limits=ProcessLimits(timeout_seconds=30),
+        )
+
+    def _tool_record(self, version_stdout: str) -> ToolRecord:
+        try:
+            version = str(json.loads(version_stdout).get("Version") or "unknown")
+        except json.JSONDecodeError:
+            version = version_stdout.strip() or "unknown"
+
+        db = check_db(self._cache_dir)
+        return ToolRecord(
+            name=self.name,
+            version=version,
+            db_timestamp=db.updated_at if db.present else None,
+        )
+
     def version(self) -> ToolRecord:
         try:
-            result = run_sandboxed(
-                [self._binary, "--version", "--format", "json"],
-                cwd=Path.cwd(),
-                limits=ProcessLimits(timeout_seconds=30),
+            result = self._check_version()
+        except SandboxError as exc:
+            raise ScannerUnavailable(f"trivy is unavailable: {exc}") from exc
+        return self._tool_record(result.stdout)
+
+    def scan(self, request: ScanRequest) -> ScanOutcome:
+        try:
+            version_result = self._check_version()
+        except SandboxTimeout as exc:
+            tool = ToolRecord(name=self.name, version="unknown")
+            return ScanOutcome(
+                findings=(),
+                tool=tool,
+                duration_ms=0,
+                partial_reason=f"trivy timed out: {exc}",
             )
         except SandboxError as exc:
             raise ScannerUnavailable(f"trivy is unavailable: {exc}") from exc
 
-        try:
-            version = str(json.loads(result.stdout).get("Version") or "unknown")
-        except json.JSONDecodeError:
-            version = result.stdout.strip() or "unknown"
-        return ToolRecord(name=self.name, version=version)
-
-    def scan(self, request: ScanRequest) -> ScanOutcome:
-        tool = self.version()
+        tool = self._tool_record(version_result.stdout)
 
         argv = [
             self._binary, "fs",
             "--scanners", "vuln,secret",
             "--format", "json",
             "--quiet",
+            "--timeout", f"{request.timeout_seconds}s",
             *self._cache_args(),
             str(request.source),
         ]

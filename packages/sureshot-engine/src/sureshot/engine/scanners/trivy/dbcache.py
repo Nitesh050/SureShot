@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-DEFAULT_CACHE_DIR = Path(os.environ.get("TRIVY_CACHE_DIR", str(Path.home() / ".cache" / "trivy")))
+
+def _default_cache_dir() -> Path:
+    """Mirror Trivy's own (Go os.UserCacheDir-based) per-OS cache default."""
+    override = os.environ.get("TRIVY_CACHE_DIR")
+    if override:
+        return Path(override)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "trivy"
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", str(Path.home()))
+        return Path(base) / "trivy"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".cache") / "trivy"
+
+
+DEFAULT_CACHE_DIR = _default_cache_dir()
 
 
 @dataclass(frozen=True)
