@@ -2,7 +2,7 @@
 name = "sureshot"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sureshot-domain", "sureshot-engine", "sureshot-cli"]
+dependencies = ["sureshot-domain", "sureshot-engine", "sureshot-cli", "sureshot-reporting", "sureshot-persistence"]
 
 [tool.uv.workspace]
 members = ["packages/*", "services/*"]
@@ -11,6 +11,8 @@ members = ["packages/*", "services/*"]
 sureshot-domain = { workspace = true }
 sureshot-engine = { workspace = true }
 sureshot-cli = { workspace = true }
+sureshot-reporting = { workspace = true }
+sureshot-persistence = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pyyaml>=6"]

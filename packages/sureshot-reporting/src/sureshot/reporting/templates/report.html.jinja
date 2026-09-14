@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SureShot Report &mdash; {{ report.project_id }}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .meta { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e0e0e0; font-size: 0.9rem; }
+  th { color: #666; font-weight: 600; }
+  .sev-critical { color: #b30000; font-weight: 600; }
+  .sev-high { color: #cc3300; }
+  .sev-medium { color: #b8860b; }
+  .sev-low { color: #2a7a2a; }
+  .sev-info { color: #888; }
+  .badge { display: inline-block; padding: 0.1rem 0.4rem; margin-right: 0.15rem; border-radius: 3px; background: #eee; font-size: 0.75rem; }
+  .coverage-gap { color: #b8860b; font-size: 0.85rem; margin: 0.25rem 0; }
+  .summary { color: #444; font-size: 0.9rem; margin: 0.75rem 0; }
+</style>
+</head>
+<body>
+<h1>SureShot Report</h1>
+<p class="meta">
+  {{ report.project_id }} &middot; scan {{ report.scan_id }} &middot;
+  generated {{ report.generated_at.strftime("%Y-%m-%d %H:%M UTC") }}<br>
+  {{ report.profile.scanned_files }} files scanned &middot; {{ report.profile.primary_language or "unknown" }}
+</p>
+
+{% if not report.issues %}
+<p>No findings.</p>
+{% else %}
+<p class="summary">
+  {{ report.issues|length }} issue{{ "s" if report.issues|length != 1 else "" }} &middot;
+  {{ report.actionable_issues|length }} actionable
+</p>
+<table>
+  <thead>
+    <tr><th>Risk</th><th>Severity</th><th>Verdict</th><th>Rule</th><th>Location</th><th>Tools</th></tr>
+  </thead>
+  <tbody>
+    {% for issue in report.issues %}
+    <tr>
+      <td>{{ "%.0f"|format(issue.primary.score) }}</td>
+      <td class="sev-{{ issue.primary.finding.severity.value }}">{{ issue.primary.finding.severity.value }}</td>
+      <td>{{ issue.primary.verdict.value.replace("_", " ") }}</td>
+      <td>{{ issue.primary.finding.title }}</td>
+      <td>{{ issue.primary.finding.location.file_path }}:{{ issue.primary.finding.location.line_start }}</td>
+      <td>{% for tool in issue.tools %}<span class="badge">{{ tool }}</span>{% endfor %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% for note in report.profile.coverage %}
+  {% if note.coverage.value != "full" %}
+  <p class="coverage-gap">coverage: {{ note.domain.value }} &mdash; {{ note.reason }}</p>
+  {% endif %}
+{% endfor %}
+</body>
+</html>
