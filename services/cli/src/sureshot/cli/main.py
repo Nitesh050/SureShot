@@ -13,15 +13,14 @@ from rich.table import Table
 
 from sureshot.domain.enums import Coverage, StepStatus
 from sureshot.domain.scan import ScanProvenance, ScanState
-from sureshot.engine.ingest.profiler import EXCLUDED_DIRS
+from sureshot.engine.ingest.profiler import EXCLUDED_DIRS, profile_repository
 from sureshot.engine.ingest.unpack import unpack
 from sureshot.engine.ingest.workdir import Workdir
 from sureshot.engine.intelligence.llm.cache import TriageCache
 from sureshot.engine.intelligence.llm.client import AnthropicClient, LLMError, OllamaClient
 from sureshot.engine.intelligence.llm.triage import TriageEngine
 from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
-from sureshot.engine.scanners.semgrep.scanner import SemgrepScanner
-from sureshot.engine.scanners.trivy.scanner import TrivyScanner
+from sureshot.engine.scanners.registry import default_scanners
 
 app = typer.Typer(add_completion=False)
 console = Console()
@@ -75,6 +74,8 @@ def scan(
         with console.status("staging"):
             _stage(target.resolve(), wd.source)
 
+        profile = profile_repository(wd.source)
+
         state = ScanState(
             scan_id=scan_id, org_id="local", project_id=target.name,
             workdir=str(wd.root), started_at=datetime.now(UTC),
@@ -82,7 +83,7 @@ def scan(
         )
         ctx = PipelineContext(
             source=wd.source.resolve(), output=wd.output.resolve(),
-            scanners=(SemgrepScanner(), TrivyScanner()), triage=engine, timeout_seconds=timeout,
+            scanners=default_scanners(profile), triage=engine, timeout_seconds=timeout,
         )
 
         with console.status("scanning"):
