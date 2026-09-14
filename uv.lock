@@ -785,6 +785,7 @@ dependencies = [
     { name = "rich" },
     { name = "sureshot-domain" },
     { name = "sureshot-engine" },
+    { name = "sureshot-reporting" },
     { name = "typer" },
 ]
 
@@ -793,6 +794,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "sureshot-domain", editable = "packages/sureshot-domain" },
     { name = "sureshot-engine", editable = "packages/sureshot-engine" },
+    { name = "sureshot-reporting", editable = "packages/sureshot-reporting" },
     { name = "typer", specifier = ">=0.12" },
 ]
 

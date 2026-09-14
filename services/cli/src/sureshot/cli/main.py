@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 import tempfile
@@ -21,6 +22,8 @@ from sureshot.engine.intelligence.llm.client import AnthropicClient, LLMError, O
 from sureshot.engine.intelligence.llm.triage import TriageEngine
 from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
 from sureshot.engine.scanners.registry import default_scanners
+from sureshot.reporting.builder import build_report
+from sureshot.reporting.writers import sarif as sarif_writer
 
 app = typer.Typer(add_completion=False)
 console = Console()
@@ -54,6 +57,7 @@ def _build_client(backend: str, model: str | None):
 def scan(
     target: Path = typer.Argument(..., exists=True),
     json_out: Path | None = typer.Option(None, "--json"),
+    sarif_out: Path | None = typer.Option(None, "--sarif", help="write a SARIF report to a file"),
     triage: bool = typer.Option(True, "--triage/--no-triage"),
     min_score: float = typer.Option(0.0, "--min-score"),
     llm: str = typer.Option("anthropic", "--llm", help="anthropic or ollama"),
@@ -98,6 +102,14 @@ def scan(
                 "coverage": [c.model_dump(mode="json") for c in result.profile.coverage],
                 "findings": [t.model_dump(mode="json") for t in shown],
             }, indent=2))
+
+        if sarif_out:
+            report = build_report(result)
+            report = dataclasses.replace(
+                report,
+                issues=tuple(i for i in report.issues if i.primary.score >= min_score),
+            )
+            sarif_out.write_text(sarif_writer.write(report))
 
     _render(shown, result.profile, result.state)
     raise typer.Exit(1 if any(t.actionable for t in shown) else 0)
