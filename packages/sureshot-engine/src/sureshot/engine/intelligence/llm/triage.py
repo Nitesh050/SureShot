@@ -10,6 +10,7 @@ from sureshot.domain.analysis import Evidence, SecurityAnalysis
 from sureshot.domain.enums import GuardHold, Verdict
 from sureshot.domain.finding import Location, SecurityFinding
 from sureshot.engine.context.snippet import Snippet
+from sureshot.engine.guards.evidence import enforce_evidence_window
 from sureshot.engine.guards.injection import scan_for_directives
 from sureshot.engine.intelligence.llm.budget import BudgetExceeded, TokenBudget
 from sureshot.engine.intelligence.llm.cache import TriageCache
@@ -71,7 +72,7 @@ class TriageEngine:
             return self._held(finding, GuardHold.EVIDENCE, "no usable model response")
 
         analysis = self._to_analysis(finding, response)
-        analysis = self._check_citations(analysis, snippet)
+        analysis = enforce_evidence_window(analysis, snippet)
 
         if key:
             self._cache.put(key, analysis)
@@ -143,21 +144,6 @@ class TriageEngine:
             prompt_hash=self._prompt.hash,
             created_at=datetime.now(UTC),
         )
-
-    def _check_citations(
-        self, analysis: SecurityAnalysis, snippet: Snippet
-    ) -> SecurityAnalysis:
-        """Every cited line must fall inside the source the model was shown."""
-        if not analysis.evidence:
-            return analysis
-
-        lower = snippet.context_start
-        upper = lower + len(snippet.context.splitlines()) - 1
-
-        for evidence in analysis.evidence:
-            if not (lower <= evidence.location.line_start <= upper):
-                return analysis.held(GuardHold.EVIDENCE)
-        return analysis
 
     def _held(
         self, finding: SecurityFinding, hold: GuardHold, reason: str

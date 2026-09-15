@@ -11,6 +11,7 @@ from sureshot.domain.repository import RepositoryProfile
 from sureshot.domain.result import TriagedFinding
 from sureshot.domain.scan import ScanState, StepResult
 from sureshot.engine.context.snippet import Snippet, extract_snippets, snippet_key
+from sureshot.engine.guards.redaction import redact_snippets
 from sureshot.engine.ingest.profiler import profile_repository
 from sureshot.engine.normalize.fingerprint import apply_fingerprints
 from sureshot.engine.risk.scoring import RiskPolicy, score_finding
@@ -97,6 +98,26 @@ def step_fingerprint(
     ), stamped, snippets
 
 
+def step_redact(
+    state: ScanState, ctx: PipelineContext,
+    findings: tuple[SecurityFinding, ...], snippets: dict,
+) -> tuple[ScanState, dict]:
+    """Strip secret material out of every snippet before triage can see it.
+
+    Runs after step_fingerprint (so fingerprint stability, computed from
+    finding metadata rather than snippet text, is unaffected) and before
+    step_triage (the only consumer of `snippets` that leaves this process,
+    via the LLM prompt).
+    """
+    def _work():
+        return redact_snippets(findings, snippets)
+
+    redacted, ms = _timed(_work)
+    return state.record(
+        StepResult(step="redact", status=StepStatus.OK, duration_ms=ms)
+    ), redacted
+
+
 def step_triage(
     state: ScanState, ctx: PipelineContext,
     findings: tuple[SecurityFinding, ...], snippets: dict,
@@ -168,6 +189,7 @@ def run_pipeline(state: ScanState, ctx: PipelineContext) -> PipelineResult:
     state, profile = step_profile(state, ctx)
     state, findings = step_scan(state, ctx, profile)
     state, findings, snippets = step_fingerprint(state, ctx, findings)
+    state, snippets = step_redact(state, ctx, findings, snippets)
     state, analyses = step_triage(state, ctx, findings, snippets)
     state, triaged = step_score(state, ctx, findings, analyses)
     return PipelineResult(state=state, profile=profile, triaged=triaged)

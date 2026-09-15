@@ -8,8 +8,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from sureshot.domain.analysis import SecurityAnalysis
-from sureshot.domain.enums import Domain, GuardHold, Severity, Verdict
+from sureshot.domain.enums import Domain, GuardHold, Verdict
 from sureshot.domain.finding import SecurityFinding
+from sureshot.engine.guards.policy import apply_critical_floor
 from sureshot.engine.risk.signals import PathRole, collect_signals
 
 _POLICY_PATH = Path(__file__).parent / "policy.yaml"
@@ -88,16 +89,11 @@ def score_finding(
         contributions["dependency"] = bonus
         score += bonus
 
-    holds: tuple[GuardHold, ...] = ()
-    if (
-        finding.severity is Severity.CRITICAL
-        and analysis is not None
-        and analysis.verdict is Verdict.FALSE_POSITIVE
-        and score < policy.critical_floor
-    ):
-        contributions["policy_floor"] = policy.critical_floor - score
-        score = policy.critical_floor
-        holds = (GuardHold.POLICY,)
+    floor = apply_critical_floor(finding, analysis, score, policy.critical_floor)
+    holds: tuple[GuardHold, ...] = floor.holds
+    if floor.floored:
+        contributions["policy_floor"] = floor.score - score
+        score = floor.score
 
     return RiskResult(
         score=round(max(0.0, min(100.0, score)), 2),
