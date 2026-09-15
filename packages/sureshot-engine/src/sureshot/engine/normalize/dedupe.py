@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sureshot.domain.enums import Domain
 from sureshot.domain.finding import SecurityFinding
 from sureshot.domain.result import TriagedFinding
+from sureshot.engine.normalize.cwe_relations import related
 
 _SAST_LINE_PROXIMITY = 3
 
@@ -17,6 +18,7 @@ class DedupedIssue:
     primary: TriagedFinding
     duplicates: tuple[TriagedFinding, ...]
     tools: tuple[str, ...]
+    correlation_reason: str = ""
 
     @property
     def occurrences(self) -> int:
@@ -27,33 +29,49 @@ class DedupedIssue:
         return len(self.tools) > 1
 
 
-def _sast_correlates(a: SecurityFinding, b: SecurityFinding) -> bool:
+def _sast_correlates(a: SecurityFinding, b: SecurityFinding) -> str | None:
     """Whether two SAST findings look like the same underlying issue even
-    though their exact issue_id differs.
+    though their exact issue_id differs. Returns a human-readable reason if
+    so, else None.
 
     issue_id can't be the whole story for SAST: it's computed from one
     finding at a time, keyed partly on cwe_ids[0], and two tools routinely
     disagree on which CWE a given rule maps to — a real case verified against
     live scanner output: Semgrep tagged a SQL injection rule CWE-704 where
-    CodeQL tagged the identical bug CWE-89. Requiring CWE overlap to confirm
-    a correlation would reject exactly that case, since the disagreement is
-    in the tools' input classification, not something a hash function can
-    reconcile. So CWE is not used here at all: same file and a tight line
-    window (tools anchor a multi-line statement to different sub-expressions,
-    rarely the exact same line) is the correlating signal. The window is
-    deliberately small — wide enough to absorb that anchoring difference,
-    tight enough that two unrelated findings sharing a busy function are
-    unlikely to fall inside it.
+    CodeQL tagged the identical bug CWE-89. Rejecting cross-tool correlation
+    whenever CWEs differ would reject exactly that case. But CWE isn't
+    dropped entirely either: a CWE *relationship* check (see
+    cwe_relations.py — CWE-704 is an ancestor of CWE-89) still requires the
+    two tags plausibly describe the same weakness, so two unrelated bugs that
+    happen to land nearby (e.g. CWE-89 SQL injection next to CWE-79 XSS) do
+    not get folded together just for being close.
+
+    Restricted to different tools: two findings from the *same* tool nearby
+    each other are not corroboration of one issue, they're two separate
+    findings that tool chose to raise — proximity between them is coincidence,
+    not signal.
     """
     if a.domain is not Domain.SAST or b.domain is not Domain.SAST:
-        return False
+        return None
+    if a.tool == b.tool:
+        return None
     if a.location.file_path != b.location.file_path:
-        return False
-    return abs(a.location.line_start - b.location.line_start) <= _SAST_LINE_PROXIMITY
+        return None
+    distance = abs(a.location.line_start - b.location.line_start)
+    if distance > _SAST_LINE_PROXIMITY:
+        return None
+    if not related(a.cwe_ids, b.cwe_ids):
+        return None
+    return f"cwe-related findings from {a.tool} and {b.tool} within {distance} line(s)"
 
 
-def _groups_correlate(a: list[TriagedFinding], b: list[TriagedFinding]) -> bool:
-    return any(_sast_correlates(x.finding, y.finding) for x in a for y in b)
+def _groups_correlate(a: list[TriagedFinding], b: list[TriagedFinding]) -> str | None:
+    for x in a:
+        for y in b:
+            reason = _sast_correlates(x.finding, y.finding)
+            if reason:
+                return reason
+    return None
 
 
 def dedupe(findings: tuple[TriagedFinding, ...]) -> tuple[DedupedIssue, ...]:
@@ -76,21 +94,26 @@ def dedupe(findings: tuple[TriagedFinding, ...]) -> tuple[DedupedIssue, ...]:
         groups[key].append(triaged)
 
     merged: list[list[TriagedFinding]] = [groups[key] for key in order]
+    reasons: list[str] = ["" for _ in merged]
     changed = True
     while changed:
         changed = False
         for i in range(len(merged)):
             for j in range(i + 1, len(merged)):
-                if _groups_correlate(merged[i], merged[j]):
+                reason = _groups_correlate(merged[i], merged[j])
+                if reason:
                     merged[i].extend(merged[j])
                     del merged[j]
+                    if not reasons[i]:
+                        reasons[i] = reason
+                    del reasons[j]
                     changed = True
                     break
             if changed:
                 break
 
     issues = []
-    for group in merged:
+    for group, reason in zip(merged, reasons):
         ordered = sorted(
             group, key=lambda t: (-t.score, t.finding.tool, t.finding.instance_id)
         )
@@ -99,6 +122,7 @@ def dedupe(findings: tuple[TriagedFinding, ...]) -> tuple[DedupedIssue, ...]:
             issue_id=ordered[0].finding.issue_id,
             primary=ordered[0],
             duplicates=tuple(ordered[1:]),
+            correlation_reason=reason,
             tools=tools,
         ))
 

@@ -42,8 +42,8 @@ def test_json_duplicates_stay_visible_when_merged_into_primary():
     low = TriagedFinding(
         finding=SecurityFinding(
             instance_id="in_1", issue_id="is_semgrep", tool="semgrep", tool_version="1.0",
-            rule_id="semgrep.xss", domain=Domain.SAST, title="XSS via innerHTML",
-            severity=Severity.MEDIUM, cwe_ids=("CWE-79",),
+            rule_id="semgrep.tainted-sql", domain=Domain.SAST, title="Tainted SQL query",
+            severity=Severity.MEDIUM, cwe_ids=("CWE-704",),
             location=Location(file_path="app.py", line_start=11, line_end=11),
         ),
         score=40.0,
@@ -51,8 +51,8 @@ def test_json_duplicates_stay_visible_when_merged_into_primary():
     high = TriagedFinding(
         finding=SecurityFinding(
             instance_id="in_2", issue_id="is_codeql", tool="codeql", tool_version="1.0",
-            rule_id="codeql.path-traversal", domain=Domain.SAST, title="Path traversal",
-            severity=Severity.HIGH, cwe_ids=("CWE-22",),
+            rule_id="codeql.sql-injection", domain=Domain.SAST, title="SQL injection",
+            severity=Severity.HIGH, cwe_ids=("CWE-89",),
             location=Location(file_path="app.py", line_start=12, line_end=12),
         ),
         score=90.0,
@@ -67,10 +67,10 @@ def test_json_duplicates_stay_visible_when_merged_into_primary():
     payload = json.loads(json_writer.write(report))
     assert len(payload["issues"]) == 1
     issue = payload["issues"][0]
-    assert issue["finding"]["rule_id"] == "codeql.path-traversal"
+    assert issue["finding"]["rule_id"] == "codeql.sql-injection"
     assert len(issue["duplicates"]) == 1
-    assert issue["duplicates"][0]["rule_id"] == "semgrep.xss"
-    assert issue["duplicates"][0]["title"] == "XSS via innerHTML"
+    assert issue["duplicates"][0]["rule_id"] == "semgrep.tainted-sql"
+    assert issue["duplicates"][0]["title"] == "Tainted SQL query"
 
 
 # ---- sarif ----
