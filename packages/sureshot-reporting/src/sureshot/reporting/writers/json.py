@@ -18,6 +18,23 @@ def _issue_to_dict(issue: DedupedIssue) -> dict:
         "score": primary.score,
         "contributions": primary.contributions,
         "holds": [h.value for h in primary.holds],
+        # Duplicates are folded into `primary` for display, but a wrongly
+        # correlated pair (same file, nearby lines) would otherwise vanish
+        # entirely — this keeps every merged finding's own identity visible
+        # even when it isn't the one chosen to lead the group.
+        "duplicates": [
+            {
+                "instance_id": d.finding.instance_id,
+                "tool": d.finding.tool,
+                "rule_id": d.finding.rule_id,
+                "title": d.finding.title,
+                "severity": d.finding.severity.value,
+                "cwe_ids": list(d.finding.cwe_ids),
+                "score": d.score,
+                "location": f"{d.finding.location.file_path}:{d.finding.location.line_start}",
+            }
+            for d in issue.duplicates
+        ],
     }
 
 

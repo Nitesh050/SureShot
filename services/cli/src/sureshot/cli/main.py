@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import shutil
 import tempfile
 import uuid
@@ -23,6 +22,7 @@ from sureshot.engine.intelligence.llm.triage import TriageEngine
 from sureshot.engine.pipeline.steps import PipelineContext, run_pipeline
 from sureshot.engine.scanners.registry import build_scanner, default_scanners
 from sureshot.reporting.builder import build_report
+from sureshot.reporting.writers import json as json_writer
 from sureshot.reporting.writers import sarif as sarif_writer
 
 app = typer.Typer(add_completion=False)
@@ -108,41 +108,36 @@ def scan(
         with console.status("scanning"):
             result = run_pipeline(state, ctx)
 
-        shown = tuple(t for t in result.triaged if t.score >= min_score)
+        report = build_report(result)
+        report = dataclasses.replace(
+            report,
+            issues=tuple(i for i in report.issues if i.primary.score >= min_score),
+        )
 
         if json_out:
-            json_out.write_text(json.dumps({
-                "scan_id": scan_id,
-                "provenance": result.state.provenance.model_dump(mode="json"),
-                "coverage": [c.model_dump(mode="json") for c in result.profile.coverage],
-                "findings": [t.model_dump(mode="json") for t in shown],
-            }, indent=2))
+            json_out.write_text(json_writer.write(report))
 
         if sarif_out:
-            report = build_report(result)
-            report = dataclasses.replace(
-                report,
-                issues=tuple(i for i in report.issues if i.primary.score >= min_score),
-            )
             sarif_out.write_text(sarif_writer.write(report))
 
-    _render(shown, result.profile, result.state)
-    raise typer.Exit(1 if any(t.actionable for t in shown) else 0)
+    _render(report.issues, result.profile, result.state)
+    raise typer.Exit(1 if any(i.primary.actionable for i in report.issues) else 0)
 
 
-def _render(triaged, profile, state) -> None:
+def _render(issues, profile, state) -> None:
     console.print(
         f"[dim]{profile.scanned_files} files · "
         f"{profile.primary_language or 'unknown'}[/dim]\n"
     )
 
-    if not triaged:
+    if not issues:
         console.print("[green]no findings[/green]")
     else:
         table = Table(show_header=True, header_style="dim")
-        for col in ("score", "sev", "verdict", "rule", "location"):
+        for col in ("score", "sev", "verdict", "rule", "location", "tools"):
             table.add_column(col)
-        for t in triaged[:40]:
+        for issue in issues[:40]:
+            t = issue.primary
             f = t.finding
             mark = "!" if t.holds else ""
             table.add_row(
@@ -151,12 +146,13 @@ def _render(triaged, profile, state) -> None:
                 t.verdict.value.replace("_", " "),
                 f.title,
                 f"{f.location.file_path}:{f.location.line_start}",
+                ",".join(issue.tools),
             )
         console.print(table)
 
-        dismissed = sum(1 for t in triaged if not t.actionable)
+        dismissed = sum(1 for i in issues if not i.primary.actionable)
         console.print(
-            f"\n{len(triaged)} findings · {len(triaged) - dismissed} actionable · "
+            f"\n{len(issues)} issues · {len(issues) - dismissed} actionable · "
             f"{dismissed} dismissed"
         )
 

@@ -25,6 +25,54 @@ def test_json_empty_report_has_empty_issues(empty_report):
     assert payload["issues"] == []
 
 
+def test_json_duplicates_stay_visible_when_merged_into_primary():
+    """A merged-away finding must not vanish from the report entirely —
+    only `primary` is rendered as the headline row, but its own rule_id/
+    title/severity must still be readable under `duplicates`."""
+    from datetime import UTC, datetime
+
+    from sureshot.domain.enums import Domain, Severity, StepStatus
+    from sureshot.domain.finding import Location, SecurityFinding
+    from sureshot.domain.repository import RepositoryProfile
+    from sureshot.domain.result import TriagedFinding
+    from sureshot.domain.scan import ScanProvenance, ScanState
+    from sureshot.engine.pipeline.steps import PipelineResult
+    from sureshot.reporting.builder import build_report
+
+    low = TriagedFinding(
+        finding=SecurityFinding(
+            instance_id="in_1", issue_id="is_semgrep", tool="semgrep", tool_version="1.0",
+            rule_id="semgrep.xss", domain=Domain.SAST, title="XSS via innerHTML",
+            severity=Severity.MEDIUM, cwe_ids=("CWE-79",),
+            location=Location(file_path="app.py", line_start=11, line_end=11),
+        ),
+        score=40.0,
+    )
+    high = TriagedFinding(
+        finding=SecurityFinding(
+            instance_id="in_2", issue_id="is_codeql", tool="codeql", tool_version="1.0",
+            rule_id="codeql.path-traversal", domain=Domain.SAST, title="Path traversal",
+            severity=Severity.HIGH, cwe_ids=("CWE-22",),
+            location=Location(file_path="app.py", line_start=12, line_end=12),
+        ),
+        score=90.0,
+    )
+    state = ScanState(
+        scan_id="sc_dup", org_id="o", project_id="p", workdir="/tmp",
+        started_at=datetime.now(UTC), provenance=ScanProvenance(engine_version="0.1.0"),
+    )
+    profile = RepositoryProfile(total_files=1, scanned_files=1, skipped_files=0, total_bytes=1)
+    report = build_report(PipelineResult(state=state, profile=profile, triaged=(low, high)))
+
+    payload = json.loads(json_writer.write(report))
+    assert len(payload["issues"]) == 1
+    issue = payload["issues"][0]
+    assert issue["finding"]["rule_id"] == "codeql.path-traversal"
+    assert len(issue["duplicates"]) == 1
+    assert issue["duplicates"][0]["rule_id"] == "semgrep.xss"
+    assert issue["duplicates"][0]["title"] == "XSS via innerHTML"
+
+
 # ---- sarif ----
 
 def test_sarif_output_is_valid_json(sample_report):
