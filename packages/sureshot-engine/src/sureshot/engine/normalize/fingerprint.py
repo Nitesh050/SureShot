@@ -101,6 +101,28 @@ def compute_issue_id(finding: SecurityFinding) -> str:
     )
 
 
+def compute_content_signature(finding: SecurityFinding, snippet: str | None) -> str | None:
+    """Identify a finding by its flagged code content alone, deliberately
+    excluding file_path — the one axis compute_issue_id treats as load-
+    bearing identity (a SAST/SECRET finding's issue_id changes on rename,
+    verified against real GitHub alert behavior in this project). Used only
+    for rename detection during reconciliation: when a finding's issue_id
+    doesn't match anything in a baseline, this lets a reconciler recognize
+    "this is the same finding, it just moved" instead of treating a plain
+    git mv as one fixed issue plus one new one — which would silently wipe
+    any prior triage disposition on that finding.
+
+    None when there's no snippet to hash — a finding with no available
+    source (SCA findings aren't tied to a meaningful code snippet at all)
+    has no content signature and can't participate in rename matching, but
+    also doesn't need to: compute_issue_id already keys SCA on package
+    identity rather than location, so it's already rename-proof.
+    """
+    if not snippet:
+        return None
+    return _digest("content", finding.tool, finding.rule_id, normalize_snippet(snippet))
+
+
 def apply_fingerprints(
     findings: tuple[SecurityFinding, ...],
     snippets: Mapping[SnippetKey, Snippet],
