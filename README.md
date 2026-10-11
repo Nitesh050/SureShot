@@ -88,6 +88,19 @@ uv run sureshot scan <path> --json findings.json --timeout 300
 
 Requires a `semgrep` binary on `PATH`.
 
+## Running the web UI
+
+```bash
+uv sync && (cd frontend && npm install)
+make dev        # API on http://127.0.0.1:8787, UI on http://localhost:5173
+```
+
+Open http://localhost:5173, paste a public GitHub/GitLab/Bitbucket URL or
+upload a `.zip`/`.tar.gz`, and watch the pipeline run live. Scans run inside
+the API process (two at a time) and are stored under `~/.sureshot/scans`
+(override with `SURESHOT_DATA_DIR`). For AI triage set `ANTHROPIC_API_KEY`
+before starting the API, or pick Ollama for a local model.
+
 ## Tests
 
 ```bash

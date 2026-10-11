@@ -2,7 +2,17 @@
 name = "sureshot-api"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "sureshot-domain",
+    "sureshot-engine",
+    "sureshot-reporting",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+sureshot-api = "sureshot.api.main:run"
 
 [build-system]
 requires = ["hatchling"]
@@ -10,3 +20,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sureshot"]
+
+[tool.uv.sources]
+sureshot-domain = { workspace = true }
+sureshot-engine = { workspace = true }
+sureshot-reporting = { workspace = true }

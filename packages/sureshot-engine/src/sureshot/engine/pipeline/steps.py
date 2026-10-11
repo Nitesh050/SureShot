@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence
 
 from sureshot.domain.enums import StepStatus
 from sureshot.domain.finding import SecurityFinding
@@ -185,11 +185,25 @@ def step_score(
     ), triaged
 
 
-def run_pipeline(state: ScanState, ctx: PipelineContext) -> PipelineResult:
+def run_pipeline(
+    state: ScanState,
+    ctx: PipelineContext,
+    on_step: Callable[[str, ScanState], None] | None = None,
+) -> PipelineResult:
+    """Run every step in order. `on_step(name, state)` fires as each step
+    starts, so a caller (the API) can report live progress."""
+    notify = on_step or (lambda _name, _state: None)
+
+    notify("profile", state)
     state, profile = step_profile(state, ctx)
+    notify("scan", state)
     state, findings = step_scan(state, ctx, profile)
+    notify("fingerprint", state)
     state, findings, snippets = step_fingerprint(state, ctx, findings)
+    notify("redact", state)
     state, snippets = step_redact(state, ctx, findings, snippets)
+    notify("triage", state)
     state, analyses = step_triage(state, ctx, findings, snippets)
+    notify("score", state)
     state, triaged = step_score(state, ctx, findings, analyses)
     return PipelineResult(state=state, profile=profile, triaged=triaged)
