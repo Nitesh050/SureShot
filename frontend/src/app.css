@@ -311,6 +311,21 @@ code { font-family: var(--mono); font-size: .92em; }
 .clean-card p { max-width: 560px; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .scanner-card .auto-note { color: var(--accent); font-family: var(--mono); font-size: 10.5px; }
 
+/* reports */
+.reports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.report-card { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
+.report-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 11.5px; }
+.report-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.report-card h3 { font-family: var(--display); font-size: 16px; font-weight: 600; }
+.report-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.report-file { overflow: hidden; font-size: 11px !important; text-overflow: ellipsis; white-space: nowrap; }
+.report-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 10px; }
+.report-actions .btn { flex: 1; }
+.menu-all { margin-top: 4px; padding: 9px 10px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; background: none; color: var(--accent); font-size: 12.5px; text-align: left; }
+.menu-all:hover { background: var(--surface-3); }
+.row-action { width: 44px; padding-left: 0 !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 /* findings */
 .toolbar { display: grid; gap: 12px; margin-bottom: 14px; }
 .tabs-inline { display: flex; flex-wrap: wrap; gap: 6px; }

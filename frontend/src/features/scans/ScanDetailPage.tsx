@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Download, ExternalLink, FileArchive, GitCommit, Github, Info, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { FindingsReport, ReportFormat, Scan } from "../../api/types";
 import { StatusPill } from "../../components/Badges";
@@ -8,11 +8,12 @@ import { duration, scanDuration, timeAgo } from "../../lib/format";
 import { usePoll } from "../../lib/usePoll";
 import { FindingsView } from "./FindingsView";
 import { PipelineTrace } from "./PipelineTrace";
+import { ReportsPanel } from "./ReportsPanel";
 import { CleanCard, NoiseFunnel, ProfileCard, SeverityCard } from "./ScanOverview";
 
 const active = (s: Scan) => s.status === "queued" || s.status === "running";
 
-type Tab = "findings" | "trace";
+type Tab = "findings" | "reports" | "trace";
 
 export function ScanDetailPage() {
   const { scanId = "" } = useParams();
@@ -20,7 +21,14 @@ export function ScanDetailPage() {
   const { data: scan, error } = usePoll(() => api.getScan(scanId), 1200, active, [scanId]);
   const [report, setReport] = useState<FindingsReport | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("findings");
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "reports" || params.get("tab") === "trace" ? (params.get("tab") as Tab) : "findings";
+  const setTab = (next: Tab) => {
+    const p = new URLSearchParams(params);
+    if (next === "findings") p.delete("tab");
+    else p.set("tab", next);
+    setParams(p, { replace: true });
+  };
   const [rescanning, setRescanning] = useState(false);
 
   const completed = scan?.status === "completed";
@@ -85,7 +93,7 @@ export function ScanDetailPage() {
               <RotateCw size={15} className={rescanning ? "spin" : undefined} /> Rescan
             </button>
           )}
-          {completed && scan.reports.length > 0 && <ReportMenu scanId={scan.id} formats={scan.reports} />}
+          {completed && scan.reports.length > 0 && <ReportMenu scanId={scan.id} formats={scan.reports} onShowAll={() => setTab("reports")} />}
         </div>
       </header>
 
@@ -124,12 +132,17 @@ export function ScanDetailPage() {
             <button type="button" role="tab" aria-selected={tab === "findings"} className={tab === "findings" ? "on" : ""} onClick={() => setTab("findings")}>
               Findings {scan.summary && <span className="count">{scan.summary.issues}</span>}
             </button>
+            <button type="button" role="tab" aria-selected={tab === "reports"} className={tab === "reports" ? "on" : ""} onClick={() => setTab("reports")}>
+              Reports <span className="count">{scan.reports.length}</span>
+            </button>
             <button type="button" role="tab" aria-selected={tab === "trace"} className={tab === "trace" ? "on" : ""} onClick={() => setTab("trace")}>
               Pipeline trace <span className="count">{scan.steps.length}</span>
             </button>
           </div>
 
-          {tab === "trace" ? (
+          {tab === "reports" ? (
+            <ReportsPanel scanId={scan.id} />
+          ) : tab === "trace" ? (
             <section className="card live-card"><PipelineTrace scan={scan} /></section>
           ) : reportError ? (
             <div className="banner banner-error">{reportError}</div>
@@ -151,7 +164,7 @@ const FORMAT_LABELS: Record<ReportFormat, string> = {
   json: "JSON (raw data)",
 };
 
-function ReportMenu({ scanId, formats }: { scanId: string; formats: ReportFormat[] }) {
+function ReportMenu({ scanId, formats, onShowAll }: { scanId: string; formats: ReportFormat[]; onShowAll: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -175,6 +188,9 @@ function ReportMenu({ scanId, formats }: { scanId: string; formats: ReportFormat
               <span className="mono menu-fmt">.{fmt}</span> {FORMAT_LABELS[fmt]}
             </a>
           ))}
+          <button type="button" className="menu-all" onClick={() => { setOpen(false); onShowAll(); }}>
+            All reports & sizes →
+          </button>
         </div>
       )}
     </div>

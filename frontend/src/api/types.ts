@@ -130,6 +130,12 @@ export interface FindingsReport {
   issues: Issue[];
 }
 
+export interface ReportFile {
+  format: ReportFormat;
+  filename: string;
+  size_bytes: number;
+}
+
 export interface Capabilities {
   scanners: { name: string; installed: boolean }[];
   llm: Record<LlmBackend, boolean>;

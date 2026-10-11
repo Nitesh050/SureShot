@@ -1,4 +1,4 @@
-import type { Capabilities, FindingsReport, LlmBackend, ReportFormat, Scan } from "./types";
+import type { Capabilities, FindingsReport, LlmBackend, ReportFile, ReportFormat, Scan } from "./types";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -55,5 +55,7 @@ export const api = {
     return request<Scan>("/scans/upload", { method: "POST", body: form });
   },
 
-  reportUrl: (id: string, fmt: ReportFormat) => `/api/scans/${id}/report/${fmt}`,
+  reports: (id: string) => request<ReportFile[]>(`/scans/${id}/reports`),
+  reportUrl: (id: string, fmt: ReportFormat, inline = false) =>
+    `/api/scans/${id}/report/${fmt}${inline ? "?inline=true" : ""}`,
 };

@@ -1,4 +1,4 @@
-import { FileArchive, Github, Plus, Radar } from "lucide-react";
+import { Download, FileArchive, Github, Plus, Radar } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Scan } from "../../api/types";
@@ -67,6 +67,7 @@ export function ScansPage() {
                 <th className="num">Noise cut</th>
                 <th className="num">Duration</th>
                 <th className="num">Started</th>
+                <th><span className="sr-only">Report</span></th>
               </tr>
             </thead>
             <tbody>
@@ -95,6 +96,9 @@ export function ScansPage() {
                     <td className="num accent">{nr === null ? "—" : pct(nr)}</td>
                     <td className="num mono">{ms === null ? "—" : duration(ms)}</td>
                     <td className="num muted">{timeAgo(scan.created_at)}</td>
+                    <td className="row-action">
+                      <QuickDownload scan={scan} />
+                    </td>
                   </tr>
                 );
               })}
@@ -114,5 +118,18 @@ function Stat({ label, value, hint, tone }: { label: string; value: number | str
       <strong className={tone ? `stat-${tone}` : undefined}>{value}</strong>
       <small>{hint}</small>
     </div>
+  );
+}
+
+/** One-click download of the most shareable report a finished scan has. */
+function QuickDownload({ scan }: { scan: Scan }) {
+  const fmt = (["pdf", "html", "json"] as const).find((f) => scan.reports.includes(f));
+  if (scan.status !== "completed" || !fmt) return null;
+  return (
+    <a className="icon-btn" href={api.reportUrl(scan.id, fmt)} download
+      title={`Download ${fmt.toUpperCase()} report`} aria-label={`Download ${fmt.toUpperCase()} report for ${scan.source.label}`}
+      onClick={(e) => e.stopPropagation()}>
+      <Download size={15} />
+    </a>
   );
 }

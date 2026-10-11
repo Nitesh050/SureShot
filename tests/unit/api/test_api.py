@@ -153,3 +153,20 @@ def test_progress_triage_reports_completion_and_preserves_order():
     out = wrapped.triage_batch(tuple(_Finding(i) for i in range(3)), {})
     assert out == ("f0", "f1", "f2")
     assert reports[-1] == (3, 3)
+
+
+def test_reports_listing_and_inline_view(env):
+    client, store, _ = env
+    store.add(ScanRecord(id="done", created_at=now(), options=ScanOptions(),
+                         status=ScanStatus.COMPLETED, source=ScanSource(kind="url", label="acme/api")))
+    (store.dir_for("done") / "report.html").write_text("<html></html>")
+    (store.dir_for("done") / "report.json").write_text("{}")
+
+    listing = client.get("/api/scans/done/reports").json()
+    assert [r["format"] for r in listing] == ["json", "html"]
+    assert listing[1] == {"format": "html", "filename": "sureshot-acme-api-done.html", "size_bytes": 13}
+
+    assert client.get("/api/scans/done/report/html?inline=true").headers["content-disposition"].startswith("inline")
+    assert client.get("/api/scans/done/report/html").headers["content-disposition"].startswith("attachment")
+    # JSON is never rendered inline, even if asked.
+    assert client.get("/api/scans/done/report/json?inline=true").headers["content-disposition"].startswith("attachment")
