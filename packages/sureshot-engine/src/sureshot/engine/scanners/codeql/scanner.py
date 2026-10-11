@@ -150,6 +150,9 @@ class CodeQLScanner:
             "--format=sarif-latest",
             f"--output={sarif_path}",
             "--threads=0",
+            # The CLI bundles no query packs; fetch this language's pack on
+            # first use instead of failing for every language not preinstalled.
+            "--download",
         ]
         try:
             analyze_result = run_sandboxed(

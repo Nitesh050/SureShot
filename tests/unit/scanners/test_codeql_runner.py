@@ -158,3 +158,20 @@ def test_database_analyze_failure_raises(tmp_path: Path, monkeypatch):
 def test_missing_binary_raises_scanner_unavailable():
     with pytest.raises(ScannerUnavailable, match="unavailable"):
         CodeQLScanner(binary="codeql-does-not-exist").version()
+
+
+def test_analyze_downloads_missing_query_packs(tmp_path: Path, monkeypatch):
+    # Without --download, any language whose query pack isn't preinstalled
+    # fails analysis outright (seen live: JavaScript on a Python-only cache).
+    seen = []
+    fake = _fake_factory({"runs": [{"tool": {"driver": {"rules": []}}, "results": []}]})
+
+    def _recording(argv, **kwargs):
+        seen.append(argv)
+        return fake(argv, **kwargs)
+
+    monkeypatch.setattr("sureshot.engine.scanners.codeql.scanner.run_sandboxed", _recording)
+    CodeQLScanner(profile=_profile("JavaScript")).scan(_request(tmp_path))
+    analyze = next(a for a in seen if _argv_kind(a) == "analyze")
+    assert "--download" in analyze
+    assert "codeql/javascript-queries:codeql-suites/javascript-security-extended.qls" in analyze
