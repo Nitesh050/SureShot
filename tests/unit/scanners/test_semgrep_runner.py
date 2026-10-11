@@ -162,3 +162,27 @@ def test_scan_is_offline_by_default(tmp_path: Path, monkeypatch):
     assert "--metrics=off" in captured["argv"]
     assert "--disable-version-check" in captured["argv"]
     assert captured["env"]["SEMGREP_SEND_METRICS"] == "off"
+
+def test_rule_engine_errors_are_grouped_by_rule_not_reported_as_files():
+    from sureshot.engine.scanners.semgrep.scanner import _describe_errors
+
+    errors = [
+        {"rule_id": "javascript.crypto-js.cryptojs-weak-algorithm.cryptojs-weak-algorithm",
+         "path": f"src/{i}.js", "message": "Internal matching error"}
+        for i in range(24)
+    ] + [
+        {"rule_id": "javascript.express.web.cors-default-config-express.cors-default-config-express",
+         "path": "src/a.js", "message": "Internal matching error"},
+    ]
+    reason = _describe_errors(errors)
+    assert reason.startswith("2 rule(s) failed inside the semgrep engine")
+    assert "cryptojs-weak-algorithm" in reason and "all other rules ran" in reason
+    assert "file(s)" not in reason
+
+
+def test_file_level_errors_still_reported():
+    from sureshot.engine.scanners.semgrep.scanner import _describe_errors
+
+    reason = _describe_errors([{"path": "big.js", "message": "Syntax error at line 3"}])
+    assert reason == "1 file(s) could not be analysed: Syntax error at line 3"
+    assert _describe_errors([]) is None

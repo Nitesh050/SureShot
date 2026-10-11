@@ -152,13 +152,7 @@ class SemgrepScanner:
         except json.JSONDecodeError as exc:
             raise ScannerUnavailable(f"could not parse semgrep output: {exc}") from exc
 
-        errors = payload.get("errors") or []
-        partial = None
-        if errors:
-            partial = (
-                f"semgrep could not analyze {len(errors)} file(s): "
-                f"{errors[0].get('message', 'unknown error')[:200]}"
-            )
+        partial = _describe_errors(payload.get("errors") or [])
 
         from sureshot.engine.scanners.semgrep.adapter import adapt_results
 
@@ -175,3 +169,38 @@ class SemgrepScanner:
 def _anywhere():
     from pathlib import Path
     return Path.cwd()
+
+
+def _describe_errors(errors: list[dict[str, Any]]) -> str | None:
+    """Summarise semgrep's per-error list into one honest partial reason.
+
+    Semgrep reports one error per (rule, file) pair. When a handful of rules
+    crash inside the engine, that shows up as dozens of "files" even though
+    every other rule analysed every file — so group by rule and say so,
+    rather than claiming the files themselves went unscanned.
+    """
+    if not errors:
+        return None
+    rule_errors: dict[str, set[str]] = {}
+    file_errors: list[dict[str, Any]] = []
+    for err in errors:
+        rule_id = err.get("rule_id")
+        if rule_id:
+            rule_errors.setdefault(rule_id, set()).add(str(err.get("path", "")))
+        else:
+            file_errors.append(err)
+
+    parts = []
+    if rule_errors:
+        names = ", ".join(sorted(r.rsplit(".", 1)[-1] for r in rule_errors)[:3])
+        more = f" (+{len(rule_errors) - 3} more)" if len(rule_errors) > 3 else ""
+        parts.append(
+            f"{len(rule_errors)} rule(s) failed inside the semgrep engine and were "
+            f"skipped: {names}{more}; all other rules ran"
+        )
+    if file_errors:
+        parts.append(
+            f"{len(file_errors)} file(s) could not be analysed: "
+            f"{str(file_errors[0].get('message', 'unknown error'))[:160]}"
+        )
+    return "; ".join(parts)

@@ -12,13 +12,21 @@ pytestmark = pytest.mark.skipif(
     shutil.which("semgrep") is None, reason="semgrep not installed"
 )
 
+# Semgrep's SQL rules are taint rules: they need a recognisable untrusted
+# source (here a Flask request) flowing into the query. A bare function
+# parameter concatenated into SQL is not flagged, even with registry login.
 VULNERABLE = '''\
 import sqlite3
+from flask import Flask, request
 
-def get_user(username):
+app = Flask(__name__)
+
+@app.route("/user")
+def get_user():
+    username = request.args.get("name")
     conn = sqlite3.connect("app.db")
     query = "SELECT * FROM users WHERE name = '" + username + "'"
-    return conn.execute(query).fetchall()
+    return str(conn.execute(query).fetchall())
 '''
 
 
